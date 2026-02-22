@@ -1,148 +1,170 @@
-# 🤟 SignBridge — Real-Time Sign Language Interpreter
+# SignBridge
 
-A web application that converts live speech into animated sign language in real time, making presentations and meetings accessible to deaf and hard-of-hearing individuals.
+Real-time sign language interpretation for live speech. You talk, it signs. No video files, no expensive APIs, no PhD required to set it up.
 
----
-
-## ✨ Features
-
-- 🎙️ **Live speech capture** via Groq Whisper (whisper-large-v3-turbo)
-- 💬 **Instant captions** shown before AI processing completes
-- 🤟 **SVG animated hand signs** — no video files needed
-- ✦ **Fingerspelling fallback** for unknown words
-- 🌐 **ASL / BSL / ISL** support
-- 📷 **Webcam split-screen** alongside signs
-- 🎨 **Three themes** — Dark, High Contrast, Colorblind-friendly
-- ⬇️ **Session export** as .txt, .srt (subtitles), or .json
-- 📖 **Sign dictionary browser** with search and categories
-- 🖥️ **Presentation mode** — full screen for projectors
-- 🔄 **Auto fallback** — Groq LLM → OpenRouter → word split
+Built for people who believe accessibility shouldn't be an afterthought bolted on at the end of a project.
 
 ---
 
-## 🛠️ Tech Stack
+## What it does
 
-| Layer | Technology |
+Someone speaks into a microphone. Within a second, their words appear as captions on screen. A few seconds later, an animated hand works through the sign language equivalent of what was just said — one sign at a time, with fingerspelling for anything it doesn't recognize.
+
+It works during presentations, meetings, lectures, or any situation where a deaf or hard-of-hearing person is expected to simply "keep up."
+
+The stack is deliberately simple: a React frontend, a Node backend, two free API keys, and a browser. Nothing exotic.
+
+---
+
+## Tech stack
+
+| Concern | Solution |
 |---|---|
-| Frontend | React + Vite |
-| Styling | Inline styles + CSS animations |
-| Speech | Groq Whisper (whisper-large-v3-turbo) |
+| Speech to text | Groq Whisper (whisper-large-v3-turbo) |
 | Sign grammar | Groq LLM (llama-3.3-70b-versatile) |
-| Fallback LLM | OpenRouter (llama-3.1-8b free) |
-| Real-time | Socket.io |
+| LLM fallback | OpenRouter (llama-3.1-8b, free tier) |
+| Signs rendered as | SVG — procedurally drawn, no video files |
+| Real-time comms | Socket.io |
+| Frontend | React + Vite |
 | Backend | Node.js + Express |
 
-**All AI APIs used are on free tiers.**
+Every AI service used here has a free tier generous enough for demos, development, and reasonable production use.
 
 ---
 
-## 🚀 Getting Started
+## Features
 
-### Prerequisites
-- Node.js 18+
-- A free [Groq API key](https://console.groq.com)
-- (Optional) A free [OpenRouter API key](https://openrouter.ai/keys)
+**Core**
+- Live captions appear before AI processing is even done — raw transcript first, cleaned version replaces it silently
+- SVG hand signs animate per word with motion that approximates the actual handshape
+- Fingerspelling fallback for any word not in the dictionary, letter by letter
+- ASL, BSL, and ISL support (dictionary-based, swappable)
 
-### 1. Clone the repo
+**UI**
+- Webcam panel shows the presenter alongside the signs — the split-screen format that makes the accessibility use case immediately obvious
+- Dark, high contrast, and colorblind-friendly themes
+- Sign speed and size controls, because different users process signs at different speeds
+- Presentation mode strips the UI and goes full-screen for projection
+
+**Utilities**
+- Sign dictionary browser — searchable, categorized, hover to preview
+- Session export as plain text, SRT subtitle file, or JSON
+- Onboarding wizard that walks new users through setup in three steps
+
+---
+
+## Getting started
+
+You will need Node.js 18 or higher and two free API keys. That's the entire prerequisite list.
+
+**Get your API keys first — it takes about two minutes:**
+- Groq: [console.groq.com](https://console.groq.com) — the primary model for both transcription and sign grammar
+- OpenRouter: [openrouter.ai/keys](https://openrouter.ai/keys) — optional but recommended as a fallback
+
+**Clone and install:**
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/sign-bridge.git
 cd sign-bridge
 ```
 
-### 2. Set up the backend
+**Backend:**
 
 ```bash
 cd backend
 npm install
-
-# Copy the example env file and fill in your keys
 cp .env.example .env
-# Edit .env and add your GROQ_API_KEY
-```
-
-### 3. Set up the frontend
-
-```bash
-cd ../frontend
-npm install
-```
-
-### 4. Run both servers
-
-**Terminal 1 — Backend:**
-```bash
-cd backend
+# Open .env and paste your API keys
 npm run dev
-# Runs on http://localhost:3001
 ```
 
-**Terminal 2 — Frontend:**
+**Frontend:**
+
 ```bash
 cd frontend
+npm install
 npm run dev
-# Runs on http://localhost:5173
 ```
 
-### 5. Open in Chrome
-
-Go to `http://localhost:5173` — Chrome is required for microphone support.
+Open `http://localhost:5173` in Chrome. Chrome is required — the Web Speech API situation in Firefox and Safari is a story for another day.
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```
 sign-bridge/
 ├── frontend/
 │   └── src/
-│       ├── App.jsx                    # Main shell
+│       ├── App.jsx                    — main shell, layout, theme system
 │       ├── hooks/
-│       │   ├── useSession.js          # Central state + WebSocket
+│       │   ├── useSession.js          — websocket connection, all shared state
 │       │   └── useSpeechRecognition.js
 │       └── components/
-│           ├── SignPlayer.jsx         # SVG animated hands
-│           ├── CaptionDisplay.jsx     # Live captions panel
-│           ├── WebcamPanel.jsx        # Webcam feed
-│           ├── Toolbar.jsx            # Controls bar
-│           ├── LanguageSelector.jsx   # ASL/BSL/ISL picker
-│           ├── OnboardingModal.jsx    # Setup wizard
-│           ├── DictionaryBrowser.jsx  # Sign dictionary
-│           └── SessionExport.jsx      # Export session
+│           ├── SignPlayer.jsx         — SVG hand renderer and sign queue
+│           ├── CaptionDisplay.jsx     — live caption panel with confidence meter
+│           ├── WebcamPanel.jsx        — presenter webcam with topic overlay
+│           ├── Toolbar.jsx            — speed, size, theme, panel toggles
+│           ├── LanguageSelector.jsx   — ASL / BSL / ISL switcher
+│           ├── OnboardingModal.jsx    — three-step setup wizard
+│           ├── DictionaryBrowser.jsx  — searchable sign reference
+│           └── SessionExport.jsx      — txt, srt, json export
 │
 └── backend/
-    ├── server.js                      # Express + Socket.io
-    ├── geminiProcessor.js             # Groq LLM + OpenRouter fallback
-    ├── signMapper.js                  # Token → sign mapping
+    ├── server.js                      — Express + Socket.io, rate limit handling
+    ├── geminiProcessor.js             — Groq LLM with OpenRouter fallback
+    ├── signMapper.js                  — maps LLM tokens to sign definitions
     ├── dictionaries/
     │   ├── asl.json
     │   ├── bsl.json
     │   └── isl.json
-    └── .env.example                   # Copy to .env and fill keys
+    └── .env.example
 ```
 
 ---
 
-## ⚙️ Environment Variables
+## Environment variables
 
-Create `backend/.env` from `backend/.env.example`:
+Create `backend/.env` by copying `backend/.env.example`:
 
 ```
-GROQ_API_KEY=your_groq_key        # Required
-OPENROUTER_API_KEY=your_key       # Optional fallback
+GROQ_API_KEY=your_key_here
+OPENROUTER_API_KEY=your_key_here
 PORT=3001
 ```
 
----
-
-## 🔒 Security Notes
-
-- Never commit your `.env` file — it's in `.gitignore`
-- API keys are server-side only, never exposed to the browser
-- The `.env.example` file shows required variables without real values
+The `.env` file is gitignored. The `.env.example` file is committed and contains no real values — it exists purely to tell the next person what variables they need.
 
 ---
 
-## 📄 License
+## How the rate limiting works
 
-MIT
+The free tier on Groq's LLM allows 30 requests per minute. If you sent one request per speech chunk (every 4 seconds), you'd hit that limit in two minutes of continuous talking.
+
+Instead, the backend uses a debounce strategy: Groq LLM is called 8 seconds after the last speech chunk arrives. During continuous speech, the timer keeps resetting. During natural pauses, it fires. This means in normal conversation you're making roughly 4-6 LLM calls per minute rather than 15.
+
+If a rate limit error comes back anyway, the accumulated text is held and retried automatically after 20 seconds. The captions keep working throughout — only the sign grammar processing is delayed.
+
+---
+
+## Known limitations
+
+The sign dictionary currently covers around 70 words. This is enough for a demo and for common conversational vocabulary, but not enough for a technical presentation about, say, distributed systems. Everything outside the dictionary gets fingerspelled, which works but is slower to read.
+
+Expanding the dictionary is straightforward — each entry in `asl.json` is just a word mapped to a video filename or SVG definition. Pull requests welcome.
+
+The fingerspelling uses emoji approximations of handshapes rather than anatomically accurate SVG renderings. It communicates the concept clearly but a trained ASL reader would notice the shortcuts.
+
+---
+
+## Contributing
+
+The most useful contribution right now is expanding the sign dictionaries. If you know ASL, BSL, or ISL and want to review or improve the sign grammar prompts, open an issue.
+
+For everything else, fork it, change it, open a PR. The code is readable and the components are intentionally small.
+
+---
+
+## License
+
+MIT. Use it, modify it, build on it.
