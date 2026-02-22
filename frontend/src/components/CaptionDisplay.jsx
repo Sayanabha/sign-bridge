@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/CaptionDisplay.jsx  — REPLACE ENTIRE FILE
 import { useEffect, useRef } from 'react';
 
 export default function CaptionDisplay({

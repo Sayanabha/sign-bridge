@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/LanguageSelector.jsx  — REPLACE ENTIRE FILE
 const LANGUAGES = [
   { code: 'asl', label: 'ASL', flag: '🇺🇸', full: 'American Sign Language' },
   { code: 'bsl', label: 'BSL', flag: '🇬🇧', full: 'British Sign Language' },

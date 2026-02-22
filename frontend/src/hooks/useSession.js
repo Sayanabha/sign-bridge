@@ -1,4 +1,3 @@
-// 📄 frontend/src/hooks/useSession.js  — NEW FILE
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { io } from 'socket.io-client';
 

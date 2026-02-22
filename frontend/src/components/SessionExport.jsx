@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/SessionExport.jsx  — NEW FILE
 import { useState } from 'react';
 
 function formatSRT(captions) {

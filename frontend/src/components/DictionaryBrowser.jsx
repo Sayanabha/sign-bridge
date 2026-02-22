@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/DictionaryBrowser.jsx  — NEW FILE
 import { useState } from 'react';
 
 // Import sign definitions from SignPlayer

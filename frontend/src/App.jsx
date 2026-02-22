@@ -1,4 +1,3 @@
-// 📄 frontend/src/App.jsx  — REPLACE ENTIRE FILE
 import { useState } from 'react';
 import { useSession } from './hooks/useSession';
 import LanguageSelector from './components/LanguageSelector';

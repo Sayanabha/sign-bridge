@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/Toolbar.jsx  — REPLACE ENTIRE FILE
 export default function Toolbar({
   colors, signSpeed, setSignSpeed, signSize, setSignSize,
   theme, setTheme, showWebcam, setShowWebcam,

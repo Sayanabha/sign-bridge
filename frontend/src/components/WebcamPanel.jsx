@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/WebcamPanel.jsx  — REPLACE ENTIRE FILE
 import { useEffect, useRef, useState } from 'react';
 
 export default function WebcamPanel({ colors, isListening, topic, presentationMode, onToggleOff }) {

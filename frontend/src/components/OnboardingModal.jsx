@@ -1,4 +1,3 @@
-// 📄 frontend/src/components/OnboardingModal.jsx  — NEW FILE
 import { useState } from 'react';
 
 const STEPS = [

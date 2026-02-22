@@ -1,4 +1,3 @@
-// 📄 backend/server.js  — REPLACE ENTIRE FILE
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
