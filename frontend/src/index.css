@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0A0A0F;
+  color: #E8E6FF;
+  font-family: 'DM Sans', sans-serif;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Animated gradient background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(124, 106, 247, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 106, 247, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Live pulse indicator */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.live-dot { animation: livePulse 1.4s ease-in-out infinite; }
+
+/* Sign token chip animation */
+@keyframes tokenSlide {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.token-enter { animation: tokenSlide 0.25s ease-out forwards; }
+
+/* Caption typewriter feel */
+@keyframes captionFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.caption-new { animation: captionFade 0.4s ease-out; }
+
+/* Glow effect */
+.accent-glow {
+  box-shadow: 0 0 30px rgba(124, 106, 247, 0.15), 0 0 60px rgba(124, 106, 247, 0.05);
+}
+
+/* Video panel shimmer while loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #1A1A24 25%, #24243A 50%, #1A1A24 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #111118; }
+::-webkit-scrollbar-thumb { background: #2A2A38; border-radius: 2px; }
