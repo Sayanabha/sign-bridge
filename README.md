@@ -30,6 +30,12 @@ The stack is deliberately simple: a React frontend, a Node backend, two free API
 
 Every AI service used here has a free tier generous enough for demos, development, and reasonable production use.
 
+## Model updates
+
+The project originally experimented with Groq's Llama 3.3 70B for sign grammar processing. It was fast but hallucinated too much on structured JSON output — sign tokens would come back malformed or completely invented. Gemini 2.5 Flash handles the grammar conversion more reliably, so that is what the project uses now.
+
+Groq is still used for speech-to-text via Whisper (whisper-large-v3-turbo), where it remains the best free option available. The two services now have clearly separate responsibilities — Groq transcribes audio, Gemini converts text into sign language grammar.
+
 ---
 
 ## Features

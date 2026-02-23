@@ -169,6 +169,13 @@ If you know ASL, BSL, or ISL and want to review whether the sign grammar output 
 
 ## Common problems
 
+**Why is Gemini used for sign grammar instead of a Llama model**
+
+The project previously used Groq's Llama 3.3 70B for sign grammar processing. It was switched back to Gemini 2.5 Flash because Llama hallucinated too frequently on structured JSON output — sign tokens would come back invented or malformed, which broke the sign queue silently. Gemini produces more consistent JSON and more accurate sign grammar conversions.
+
+If you are experimenting with alternative models, test against structured JSON output specifically, not just general chat quality. A model that scores well on benchmarks can still be unreliable when asked to return strict JSON with domain-specific vocabulary on every single request.
+
+
 **Backend starts but shows key missing**
 
 Your `.env` file is either in the wrong folder or has a formatting issue. It must be at `backend/.env`, not the project root. Keys must have no quotes and no spaces around the equals sign.
