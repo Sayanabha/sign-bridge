@@ -1,89 +1,14 @@
-import Groq from 'groq-sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-// OpenRouter as fallback (free, no extra setup needed beyond getting a key)
-// Get key free at: https://openrouter.ai/keys
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
-
-// ── Build the prompt (shared between providers) ───────────────────────────
-function buildPrompt(rawTranscript, langName, contextHistory) {
-  const contextStr = contextHistory.length > 0
-    ? `Previous context:\n${contextHistory.map((c, i) => `${i + 1}. "${c}"`).join('\n')}\n\n`
-    : '';
-
-  return `${contextStr}You are a real-time sign language interpreter.
-
-INPUT: "${rawTranscript}"
-TARGET: ${langName}
-
-Rules:
-- Topic-comment structure (object before action)
-- Drop articles (a, the)  
-- Drop copula (is, are, was, were)
-- Keep only content words
-- Example: "The meeting will start soon" → ["meeting", "start", "soon"]
-
-Respond ONLY with valid JSON, no markdown, no extra text:
-{
-  "cleanedCaption": "natural cleaned sentence here",
-  "signTokens": ["word1", "word2", "word3"],
-  "topic": "one of: General / Business / Medical / Education / Technology / Casual",
-  "confidence": 0.95
-}`;
-}
-
-// ── Call Groq (primary) ───────────────────────────────────────────────────
-async function callGroq(prompt) {
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 300,
-  });
-  return completion.choices[0]?.message?.content?.trim() || '';
-}
-
-// ── Call OpenRouter (fallback) ────────────────────────────────────────────
-async function callOpenRouter(prompt) {
-  if (!OPENROUTER_KEY) throw new Error('No OpenRouter key');
-
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'http://localhost:5173',
-      'X-Title': 'SignBridge',
-    },
-    body: JSON.stringify({
-      model: 'meta-llama/llama-3.1-8b-instruct:free',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-      max_tokens: 300,
-    }),
-  });
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() || '';
-}
-
-// ── Parse JSON response safely ────────────────────────────────────────────
-function parseResponse(text, rawTranscript) {
-  const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const parsed = JSON.parse(clean);
-  return {
-    success: true,
-    cleanedCaption: parsed.cleanedCaption || rawTranscript,
-    signTokens: (parsed.signTokens || []).map(t => t.toLowerCase()),
-    topic: parsed.topic || 'General',
-    confidence: parsed.confidence || 0.9,
-  };
-}
-
-// ── Main export ───────────────────────────────────────────────────────────
+/**
+ * Groq Whisper  → speech to text        (handled in server.js)
+ * Gemini Flash  → sign grammar tokens   (handled here)
+ */
 export async function processTranscript(rawTranscript, targetLanguage = 'asl', contextHistory = []) {
   const languageNames = {
     asl: 'American Sign Language (ASL)',
@@ -91,37 +16,61 @@ export async function processTranscript(rawTranscript, targetLanguage = 'asl', c
     isl: 'Indian Sign Language (ISL)',
   };
   const langName = languageNames[targetLanguage] || 'ASL';
-  const prompt = buildPrompt(rawTranscript, langName, contextHistory);
 
-  // Try Groq first
+  const contextStr = contextHistory.length > 0
+    ? `Previous context:\n${contextHistory.map((c, i) => `${i + 1}. "${c}"`).join('\n')}\n\n`
+    : '';
+
+  const prompt = `${contextStr}You are a real-time sign language interpreter.
+
+INPUT: "${rawTranscript}"
+TARGET: ${langName}
+
+Rules:
+- Topic-comment structure (object before action)
+- Drop articles (a, the)
+- Drop copula (is, are, was, were)
+- Keep only content words
+- Example: "The meeting will start soon" → ["meeting", "start", "soon"]
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  "cleanedCaption": "natural cleaned sentence here",
+  "signTokens": ["word1", "word2", "word3"],
+  "topic": "one of: General / Business / Medical / Education / Technology / Casual",
+  "confidence": 0.95
+}`;
+
   try {
-    console.log('[LLM] Trying Groq (llama-3.3-70b)...');
-    const text = await callGroq(prompt);
-    const result = parseResponse(text, rawTranscript);
-    console.log(`[LLM] ✅ Groq success | Topic: ${result.topic} | Tokens: ${result.signTokens.length}`);
-    return result;
-  } catch (err) {
-    const isRateLimit = err.message?.includes('429') || err.message?.includes('rate') || err.message?.includes('quota');
-    console.warn(`[LLM] Groq failed (${isRateLimit ? 'rate limit' : err.message}) — trying OpenRouter...`);
-  }
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim()
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
 
-  // Fallback to OpenRouter
-  try {
-    const text = await callOpenRouter(prompt);
-    const result = parseResponse(text, rawTranscript);
-    console.log(`[LLM] ✅ OpenRouter fallback success | Topic: ${result.topic}`);
-    return result;
-  } catch (err) {
-    console.error('[LLM] Both providers failed:', err.message);
-  }
+    const parsed = JSON.parse(text);
+    console.log(`[Gemini] Topic: ${parsed.topic} | Tokens: ${parsed.signTokens?.length}`);
 
-  // Last resort: basic word split
-  console.log('[LLM] ⚠️ Using word-split fallback');
-  return {
-    success: false,
-    cleanedCaption: rawTranscript,
-    signTokens: rawTranscript.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean),
-    topic: 'General',
-    confidence: 0.3,
-  };
+    return {
+      success: true,
+      cleanedCaption: parsed.cleanedCaption || rawTranscript,
+      signTokens: (parsed.signTokens || []).map(t => t.toLowerCase()),
+      topic: parsed.topic || 'General',
+      confidence: parsed.confidence || 0.9,
+    };
+
+  } catch (err) {
+    console.error('[Gemini] Error:', err.message);
+    return {
+      success: false,
+      cleanedCaption: rawTranscript,
+      signTokens: rawTranscript
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, '')
+        .split(/\s+/)
+        .filter(Boolean),
+      topic: 'General',
+      confidence: 0.3,
+    };
+  }
 }
