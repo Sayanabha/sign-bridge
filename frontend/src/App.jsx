@@ -8,9 +8,10 @@ import Toolbar from './components/Toolbar';
 import OnboardingModal from './components/OnboardingModal';
 import DictionaryBrowser from './components/DictionaryBrowser';
 import SessionExport from './components/SessionExport';
-
+import QRShare from './components/QRShare';
 export default function App() {
   const session = useSession();
+  const [showQR, setShowQR] = useState(false);
 
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [showDictionary, setShowDictionary] = useState(false);
@@ -50,6 +51,20 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <LanguageSelector selected={session.language} onChange={session.setLanguage} disabled={session.isListening} colors={colors} />
+              {/* ← ADD THE SHARE BUTTON HERE */}
+  <button
+    onClick={() => setShowQR(true)}
+    style={{
+      padding: '10px 18px', borderRadius: '12px', cursor: 'pointer',
+      fontWeight: 700, fontSize: '13px', border: `1px solid ${colors.border}`,
+      background: colors.panel, color: colors.muted,
+      display: 'flex', alignItems: 'center', gap: '6px',
+      transition: 'all 0.15s',
+    }}
+  >
+    Share
+  </button>
+
               <button
                 onClick={session.isListening ? session.stopSession : session.startSession}
                 style={{
@@ -155,6 +170,13 @@ export default function App() {
       )}
 
       <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} } *{box-sizing:border-box}`}</style>
+      {showQR && (
+  <QRShare
+    colors={colors}
+    isListening={session.isListening}
+    onClose={() => setShowQR(false)}
+  />
+)}
     </div>
   );
 }

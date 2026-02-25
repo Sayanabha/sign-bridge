@@ -10,6 +10,11 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { processTranscript } from './geminiProcessor.js';
 import { mapTokensToVideos, getAvailableSigns } from './signMapper.js';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import ip from 'ip';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 dotenv.config();
 
@@ -25,7 +30,40 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+// Serve the mobile viewer page
+app.use(express.static(resolve(__dirname, 'public')));
 
+app.get('/view', (req, res) => {
+  res.sendFile(resolve(__dirname, 'public', 'viewer.html'));
+});
+
+// Return the local IP-based viewer URL for QR code generation
+app.get('/api/viewer-url', async (req, res) => {
+  const { networkInterfaces } = await import('os');
+  const nets = networkInterfaces();
+  let localIp = 'localhost';
+
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        localIp = net.address;
+        break;
+      }
+    }
+  }
+
+  const url = `http://${localIp}:${PORT}/view`;
+  console.log(`[QR] Viewer URL: ${url}`);
+  res.json({ url, ip: localIp, port: PORT });
+});
+
+// Return how many viewer sockets are connected
+app.get('/api/viewer-count', (req, res) => {
+  res.json({ count: viewerSockets.size });
+});
+
+// Track viewer sockets (read-only audience connections)
+const viewerSockets = new Set();
 // ── Session store (in-memory, keyed by socket id) ──────────────────────────
 // Each session tracks: transcript history, sign queue, topic, timestamps
 const sessions = new Map();
@@ -48,6 +86,13 @@ function getSession(socketId) {
 // ── Socket.IO ──────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`[WS] Client connected: ${socket.id}`);
+  // If this is a viewer (audience phone), handle separately
+socket.on('viewer-join', () => {
+  socket.join('viewers');  // ← join a room called 'viewers'
+  viewerSockets.add(socket.id);
+  console.log(`[Viewer] Joined: ${socket.id} | Total: ${viewerSockets.size}`);
+});
+
   const session = getSession(socket.id);
 
   // Client sets language preference
@@ -70,6 +115,8 @@ io.on('connection', (socket) => {
     // Immediately emit raw caption so frontend shows it instantly
     const captionEntry = { text, timestamp, type: 'raw' };
     socket.emit('caption', captionEntry);
+io.to('viewers').emit('caption', captionEntry);
+
     session.captionLog.push(captionEntry);
 
     // Process with Gemini (with context)
@@ -89,6 +136,13 @@ io.on('connection', (socket) => {
         confidence: geminiResult.confidence,
       };
       socket.emit('caption-update', cleanedEntry);
+io.to('viewers').emit('caption-update', {
+  text: result.cleanedCaption,
+  timestamp: Date.now(),
+  type: 'cleaned',
+  topic: result.topic,
+  confidence: result.confidence,
+});
       session.captionLog[session.captionLog.length - 1] = cleanedEntry;
       session.topic = geminiResult.topic;
 
@@ -112,7 +166,13 @@ io.on('connection', (socket) => {
         coverage,
         timestamp,
       });
-
+io.to('viewers').emit('signs', {
+  signQueue,
+  topic: result.topic,
+  confidence: result.confidence,
+  coverage,
+  timestamp: Date.now(),
+});
     } catch (err) {
       console.error('[Gemini] Error:', err.message);
       // Fallback sign queue from raw words
@@ -140,11 +200,20 @@ io.on('connection', (socket) => {
     console.log(`[WS] Session reset: ${socket.id}`);
   });
 
-  socket.on('disconnect', () => {
-    console.log(`[WS] Client disconnected: ${socket.id}`);
-    // Keep session briefly for reconnect, then clean up
-    setTimeout(() => sessions.delete(socket.id), 60000);
-  });
+socket.on('disconnect', () => {
+  if (viewerSockets.has(socket.id)) {
+    socket.leave('viewers');
+    viewerSockets.delete(socket.id);
+    console.log(`[Viewer] Disconnected: ${socket.id} | Remaining: ${viewerSockets.size}`);
+    return;
+  }
+
+  if (typeof geminiInterval !== 'undefined') {
+    clearInterval(geminiInterval);
+  }
+  console.log(`[WS] Disconnected: ${socket.id}`);
+  setTimeout(() => sessions.delete(socket.id), 60000);
+});
 });
 
 // ── REST: Audio transcription (Groq Whisper) ──────────────────────────────
@@ -186,7 +255,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🤟 SignBridge Backend running on http://localhost:${PORT}`);
   console.log(`   Groq:   ${process.env.GROQ_API_KEY ? '✅' : '❌ Missing GROQ_API_KEY'}`);
   console.log(`   Gemini: ${process.env.GEMINI_API_KEY ? '✅' : '❌ Missing GEMINI_API_KEY'}\n`);
