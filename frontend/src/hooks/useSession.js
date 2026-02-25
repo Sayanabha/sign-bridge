@@ -47,25 +47,20 @@ export function useSession() {
       setIsProcessing(true);
     });
 
-    // Cleaned caption from Gemini (replaces last raw)
-    s.on('caption-update', (entry) => {
-      setCaptions(prev => {
-        const updated = [...prev];
-        if (updated.length > 0) {
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            text: entry.text,
-            topic: entry.topic,
-            cleaned: true,
-          };
-        }
-        return updated;
-      });
-      if (entry.topic) setTopic(entry.topic);
-      if (entry.confidence) setConfidence(entry.confidence);
-      setIsProcessing(false);
-      setSegmentsProcessed(p => p + 1);
-    });
+// Cleaned caption from Gemini (replaces last raw)
+s.on('caption-update', (entry) => {
+  // Add cleaned caption as a SEPARATE entry instead of replacing raw
+  const id = ++captionIdRef.current;
+  setCaptions(prev => [...prev, {
+    ...entry,
+    id,
+    type: 'cleaned',
+  }]);
+  if (entry.topic) setTopic(entry.topic);
+  if (entry.confidence) setConfidence(entry.confidence);
+  setIsProcessing(false);
+  setSegmentsProcessed(p => p + 1);
+});
 
     // Signs from Gemini
     s.on('signs', (data) => {

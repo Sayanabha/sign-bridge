@@ -1,11 +1,11 @@
 
 const FILLERS = new Set([
-  'um', 'uh', 'uhh', 'umm', 'er', 'err', 'ah', 'ahh',
-  'like', 'basically', 'literally', 'actually', 'honestly',
-  'you know', 'i mean', 'kind of', 'sort of', 'right',
-  'okay', 'ok', 'so', 'well', 'anyway', 'anyways',
+  'um', 'uh', 'er', 'ah', 'so', 'well', 'just', 'like',
+  'okay', 'ok', 'right', 'now', 'then', 'also', 'very',
+  'much', 'really', 'quite', 'rather', 'pretty', 'basically',
+  'literally', 'actually', 'honestly', 'anyway', 'alright',
+  'you know', 'i mean', 'kind of', 'sort of', 'a lot',
 ]);
-
 const ARTICLES = new Set(['a', 'an', 'the']);
 
 const COPULA = new Set([
@@ -13,8 +13,9 @@ const COPULA = new Set([
 ]);
 
 const AUXILIARIES = new Set([
-  'will', 'would', 'could', 'should', 'shall', 'might', 'may',
-  'do', 'does', 'did', 'have', 'has', 'had', 'going',
+  'will', 'would', 'could', 'should', 'can', 'may', 'might',
+  'shall', 'must', 'do', 'does', 'did', 'have', 'has', 'had',
+  'going', 'to', 'then', 'now', 'when', 'that', 'this',
 ]);
 
 const QUESTION_WORDS = new Set([
@@ -86,7 +87,6 @@ const TOPIC_KEYWORDS = {
   Technology: ['computer', 'software', 'code', 'app', 'data', 'system', 'network', 'algorithm', 'programming', 'device', 'internet', 'ai'],
   Casual:     ['lunch', 'dinner', 'movie', 'weekend', 'friend', 'party', 'music', 'game', 'fun', 'holiday', 'travel', 'food'],
 };
-
 // ── Pipeline steps ────────────────────────────────────────────────────────────
 
 function expandContractions(text) {
@@ -105,8 +105,10 @@ function tokenize(text) {
     .filter(Boolean);
 }
 
+const KEEP_SHORT = new Set(['no', 'not', 'yes', 'who', 'why', 'how', 'eat', 'sit', 'run', 'see', 'ask']);
+
 function removeFillers(words) {
-  return words.filter(w => !FILLERS.has(w));
+  return words.filter(w => w && !FILLERS.has(w) && (w.length > 3 || KEEP_SHORT.has(w)));
 }
 
 function removeArticles(words) {
@@ -150,7 +152,29 @@ function detectTopic(words) {
   }
   return 'General';
 }
+function buildCleanedCaption(rawText) {
+  // Keep sentence structure — only remove fillers and expand contractions
+  let text = rawText.trim();
 
+  // Expand contractions
+  for (const [contraction, expansion] of Object.entries(CONTRACTIONS)) {
+    text = text.replace(
+      new RegExp(`\\b${contraction}\\b`, 'gi'),
+      expansion
+    );
+  }
+
+  // Remove filler words only
+  for (const filler of FILLERS) {
+    text = text.replace(new RegExp(`\\b${filler}\\b`, 'gi'), '');
+  }
+
+  // Clean up extra spaces
+  text = text.replace(/\s+/g, ' ').trim();
+
+  // Capitalize first letter
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function processTranscriptLocally(rawTranscript) {
@@ -168,14 +192,13 @@ export function processTranscriptLocally(rawTranscript) {
   words = reorderTopicComment(words, questionDetected);
 
   // Clean up
-  words = words
-    .filter(Boolean)
-    .filter((w, i, arr) => w !== arr[i - 1]); // remove adjacent duplicates
+words = words.filter(w => w && w.length > 2);
+// remove adjacent duplicates
 
   const topic = detectTopic(words);
-  const cleanedCaption = words.length
-    ? words[0].charAt(0).toUpperCase() + words.slice(1).join(' ')
-    : rawTranscript;
+ const cleanedCaption = words.length
+  ? words.map((w, i) => i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ')
+  : rawTranscript;
 
   return {
     cleanedCaption,
