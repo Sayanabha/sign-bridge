@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+// 📄 frontend/src/components/CaptionDisplay.jsx  — REPLACE ENTIRE FILE
+import { useEffect, useRef, useState } from 'react';
 
 export default function CaptionDisplay({
   captions, interimText, topic, isListening,
@@ -6,9 +7,9 @@ export default function CaptionDisplay({
 }) {
   const rawBottomRef = useRef(null);
   const cleanBottomRef = useRef(null);
+  const [showCleaned, setShowCleaned] = useState(true);
 
-  // Separate raw and cleaned captions
-  const rawCaptions = captions.filter(c => c.type === 'raw' || !c.type);
+  const rawCaptions     = captions.filter(c => c.type === 'raw' || !c.type);
   const cleanedCaptions = captions.filter(c => c.type === 'cleaned');
 
   useEffect(() => {
@@ -18,12 +19,6 @@ export default function CaptionDisplay({
   useEffect(() => {
     cleanBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [captions]);
-
-  const panelStyle = {
-    display: 'flex', flexDirection: 'column', height: '100%',
-    background: colors.panel, border: `1px solid ${colors.border}`,
-    borderRadius: presentationMode ? '0' : '16px', overflow: 'hidden',
-  };
 
   const columnStyle = {
     flex: 1, overflowY: 'auto', padding: '14px',
@@ -44,8 +39,29 @@ export default function CaptionDisplay({
     </div>
   );
 
+  const smallBtn = (label, active, onClick) => (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '3px 10px', borderRadius: '6px', cursor: 'pointer',
+        fontSize: '10px', fontWeight: 700, fontFamily: 'monospace',
+        border: '1px solid',
+        background: active ? colors.accent + '22' : 'transparent',
+        color: active ? colors.accent : colors.muted,
+        borderColor: active ? colors.accent + '44' : colors.border,
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div style={panelStyle}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: colors.panel, border: `1px solid ${colors.border}`,
+      borderRadius: presentationMode ? '0' : '16px', overflow: 'hidden',
+    }}>
 
       {/* ── Header ── */}
       <div style={{
@@ -71,133 +87,160 @@ export default function CaptionDisplay({
             </div>
           )}
         </div>
-        {!presentationMode && onToggleOff && (
-          <button
-            onClick={onToggleOff}
-            style={{
-              background: 'none', border: `1px solid ${colors.border}`,
-              borderRadius: '6px', padding: '3px 8px', cursor: 'pointer',
-              color: colors.muted, fontSize: '11px', fontWeight: 600,
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = colors.danger; e.currentTarget.style.color = colors.danger; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.muted; }}
-          >
-            ✕ Hide
-          </button>
-        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Toggle cleaned column */}
+          {smallBtn(
+            showCleaned ? 'Hide Cleaned' : 'Show Cleaned',
+            showCleaned,
+            () => setShowCleaned(!showCleaned)
+          )}
+
+          {/* Hide panel */}
+          {!presentationMode && onToggleOff && (
+            <button
+              onClick={onToggleOff}
+              style={{
+                background: 'none', border: `1px solid ${colors.border}`,
+                borderRadius: '6px', padding: '3px 8px', cursor: 'pointer',
+                color: colors.muted, fontSize: '11px', fontWeight: 600,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = colors.danger; e.currentTarget.style.color = colors.danger; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.muted; }}
+            >
+              ✕ Hide
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Column headers ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr',
-        borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
+        display: 'grid',
+        gridTemplateColumns: showCleaned ? '1fr 1fr' : '1fr',
+        borderBottom: `1px solid ${colors.border}`,
+        flexShrink: 0,
+        transition: 'grid-template-columns 0.3s ease',
       }}>
         <div style={{
-          padding: '6px 14px', borderRight: `1px solid ${colors.border}`,
+          padding: '6px 14px',
+          borderRight: showCleaned ? `1px solid ${colors.border}` : 'none',
           display: 'flex', alignItems: 'center', gap: '6px',
         }}>
           <span style={{ fontSize: '9px', fontFamily: 'monospace', color: colors.muted, letterSpacing: '1px' }}>
             RAW TRANSCRIPT
           </span>
           <span style={{ fontSize: '9px', color: colors.muted, fontFamily: 'monospace' }}>
-            (Whisper)
+            (Whisper) — used for signs
           </span>
         </div>
-        <div style={{
-          padding: '6px 14px',
-          display: 'flex', alignItems: 'center', gap: '6px',
-        }}>
-          <span style={{ fontSize: '9px', fontFamily: 'monospace', color: colors.accentGlow, letterSpacing: '1px' }}>
-            CLEANED
-          </span>
-          <span style={{ fontSize: '9px', color: colors.muted, fontFamily: 'monospace' }}>
-            (Sign grammar)
-          </span>
-        </div>
+        {showCleaned && (
+          <div style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '9px', fontFamily: 'monospace', color: colors.accentGlow, letterSpacing: '1px' }}>
+              CLEANED
+            </span>
+            <span style={{ fontSize: '9px', color: colors.muted, fontFamily: 'monospace' }}>
+              (Sign grammar)
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* ── Two columns ── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 0 }}>
+      {/* ── Columns ── */}
+      <div style={{
+        flex: 1, display: 'grid',
+        gridTemplateColumns: showCleaned ? '1fr 1fr' : '1fr',
+        minHeight: 0,
+        transition: 'grid-template-columns 0.3s ease',
+      }}>
 
-        {/* Raw column */}
-        <div style={{ ...columnStyle, borderRight: `1px solid ${colors.border}` }}>
-          {rawCaptions.length === 0 && !interimText ? emptyState('raw') : (
-            <>
-              {rawCaptions.map((c, i) => (
-                <div key={c.id || i} style={{
-                  background: colors.bg,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: '8px', padding: '8px 10px',
-                }}>
-                  <p style={{
-                    margin: 0, color: colors.text,
-                    fontSize: presentationMode ? '16px' : '13px',
-                    lineHeight: 1.6,
+        {/* Raw column — always visible */}
+        <div style={{
+          ...columnStyle,
+          borderRight: showCleaned ? `1px solid ${colors.border}` : 'none',
+        }}>
+          {rawCaptions.length === 0 && !interimText
+            ? emptyState('raw')
+            : (
+              <>
+                {rawCaptions.map((c, i) => (
+                  <div key={c.id || i} style={{
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '8px', padding: '8px 10px',
                   }}>
-                    {c.text}
-                  </p>
-                  <span style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace' }}>
-                    {new Date(c.timestamp || Date.now()).toLocaleTimeString()}
-                  </span>
-                </div>
-              ))}
-
-              {/* Interim text */}
-              {interimText && (
-                <div style={{
-                  background: colors.accent + '10',
-                  border: `1px solid ${colors.accent}30`,
-                  borderRadius: '8px', padding: '8px 10px',
-                }}>
-                  <p style={{ margin: 0, color: colors.accentGlow, fontSize: '13px', fontStyle: 'italic' }}>
-                    {interimText}
-                    <span style={{
-                      display: 'inline-block', width: 2, height: 12,
-                      background: colors.accent, marginLeft: 3,
-                      verticalAlign: 'middle', animation: 'blink 1s step-end infinite',
-                    }} />
-                  </p>
-                </div>
-              )}
-              <div ref={rawBottomRef} />
-            </>
-          )}
-        </div>
-
-        {/* Cleaned column */}
-        <div style={columnStyle}>
-          {cleanedCaptions.length === 0 ? emptyState('cleaned') : (
-            <>
-              {cleanedCaptions.map((c, i) => (
-                <div key={c.id || i} style={{
-                  background: colors.accent + '08',
-                  border: `1px solid ${colors.accent}22`,
-                  borderRadius: '8px', padding: '8px 10px',
-                }}>
-                  <p style={{
-                    margin: 0, color: colors.text,
-                    fontSize: presentationMode ? '16px' : '13px',
-                    lineHeight: 1.6,
-                  }}>
-                    {c.text}
-                  </p>
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '3px', alignItems: 'center' }}>
+                    <p style={{
+                      margin: 0, color: colors.text,
+                      fontSize: presentationMode ? '16px' : '13px',
+                      lineHeight: 1.6,
+                    }}>
+                      {c.text}
+                    </p>
                     <span style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace' }}>
                       {new Date(c.timestamp || Date.now()).toLocaleTimeString()}
                     </span>
-                    {c.topic && (
-                      <span style={{ fontSize: '9px', color: colors.accentGlow, fontFamily: 'monospace' }}>
-                        {c.topic}
-                      </span>
-                    )}
                   </div>
-                </div>
-              ))}
-              <div ref={cleanBottomRef} />
-            </>
-          )}
+                ))}
+
+                {interimText && (
+                  <div style={{
+                    background: colors.accent + '10',
+                    border: `1px solid ${colors.accent}30`,
+                    borderRadius: '8px', padding: '8px 10px',
+                  }}>
+                    <p style={{ margin: 0, color: colors.accentGlow, fontSize: '13px', fontStyle: 'italic' }}>
+                      {interimText}
+                      <span style={{
+                        display: 'inline-block', width: 2, height: 12,
+                        background: colors.accent, marginLeft: 3,
+                        verticalAlign: 'middle', animation: 'blink 1s step-end infinite',
+                      }} />
+                    </p>
+                  </div>
+                )}
+                <div ref={rawBottomRef} />
+              </>
+            )}
         </div>
+
+        {/* Cleaned column — toggleable */}
+        {showCleaned && (
+          <div style={columnStyle}>
+            {cleanedCaptions.length === 0
+              ? emptyState('cleaned')
+              : (
+                <>
+                  {cleanedCaptions.map((c, i) => (
+                    <div key={c.id || i} style={{
+                      background: colors.accent + '08',
+                      border: `1px solid ${colors.accent}22`,
+                      borderRadius: '8px', padding: '8px 10px',
+                    }}>
+                      <p style={{
+                        margin: 0, color: colors.text,
+                        fontSize: presentationMode ? '16px' : '13px',
+                        lineHeight: 1.6,
+                      }}>
+                        {c.text}
+                      </p>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '3px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace' }}>
+                          {new Date(c.timestamp || Date.now()).toLocaleTimeString()}
+                        </span>
+                        {c.topic && (
+                          <span style={{ fontSize: '9px', color: colors.accentGlow, fontFamily: 'monospace' }}>
+                            {c.topic}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={cleanBottomRef} />
+                </>
+              )}
+          </div>
+        )}
       </div>
 
       <style>{`

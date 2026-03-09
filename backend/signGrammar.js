@@ -200,11 +200,16 @@ words = words.filter(w => w && w.length > 2);
   ? words.map((w, i) => i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ')
   : rawTranscript;
 
-  return {
-    cleanedCaption,
-    signTokens: words,
-    topic,
-    confidence: questionDetected ? 0.82 : 0.91,
-    isQuestion: questionDetected,
-  };
+// Raw tokens = direct Whisper words, used for sign rendering
+const rawTokens = tokenize(expandContractions(rawTranscript))
+  .filter(w => w.length > 2);
+
+return {
+  cleanedCaption,
+  signTokens: rawTokens,   // ← signs based on raw Whisper, not cleaned grammar
+  cleanedTokens: words,    // ← kept for reference but not used for signs
+  topic,
+  confidence: questionDetected ? 0.82 : 0.91,
+  isQuestion: questionDetected,
+};
 }

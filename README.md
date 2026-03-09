@@ -70,7 +70,7 @@ You will need Node.js 18 or higher and two free API keys. That's the entire prer
 **Clone and install:**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sign-bridge.git
+git clone https://github.com/Sayanabha/sign-bridge.git
 cd sign-bridge
 ```
 
