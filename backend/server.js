@@ -1,3 +1,7 @@
+// 📄 backend/server.js  — DAY 4 UPDATE
+// New: sign-output socket event — deaf person's signed sentences
+//      broadcast to all viewer screens in real time
+
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -9,12 +13,11 @@ import { createReadStream, writeFileSync, unlinkSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { tmpdir, networkInterfaces } from 'os';
 import { fileURLToPath } from 'url';
-import { processTranscriptLocally } from './signGrammar.js';
+import { processTranscriptLocally as convertToSignGrammar } from './signGrammar.js';
 import { mapTokensToVideos, getAvailableSigns } from './signMapper.js';
 
-// NOTE: geminiProcessor.js is kept but not imported here.
-// To switch back to Gemini, replace the processTranscriptLocally call
-// with: import { processTranscript } from './geminiProcessor.js';
+// Gemini kept but unused — to re-enable uncomment:
+// import { processTranscript } from './geminiProcessor.js';
 
 dotenv.config();
 
@@ -33,40 +36,51 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.static(resolve(__dirname, 'public')));
 
-// ── Viewer page ───────────────────────────────────────────────────────────────
+// ── REST routes ───────────────────────────────────────────────────────────────
+
 app.get('/view', (req, res) => {
   res.sendFile(resolve(__dirname, 'public', 'viewer.html'));
 });
 
-// ── Viewer URL (for QR code) ──────────────────────────────────────────────────
-app.get('/api/viewer-url', async (req, res) => {
+app.get('/api/viewer-url', (req, res) => {
   const nets = networkInterfaces();
   let localIp = 'localhost';
-
   for (const name of Object.keys(nets)) {
     for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        localIp = net.address;
-        break;
-      }
+      if (net.family === 'IPv4' && !net.internal) { localIp = net.address; break; }
     }
   }
-
   const url = `http://${localIp}:${PORT}/view`;
   console.log(`[QR] Viewer URL: ${url}`);
   res.json({ url, ip: localIp, port: PORT });
 });
 
-// ── Viewer count ──────────────────────────────────────────────────────────────
 app.get('/api/viewer-count', (req, res) => {
   res.json({ count: viewerSockets.size });
 });
 
-// ── Track viewer sockets ──────────────────────────────────────────────────────
-const viewerSockets = new Set();
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    model: 'groq-whisper-only',
+    groq: !!process.env.GROQ_API_KEY,
+    gemini: 'disabled — geminiProcessor.js kept as backup',
+    grammar: 'rule-based',
+    activeSessions: sessions.size,
+    viewers: viewerSockets.size,
+    timestamp: new Date().toISOString(),
+  });
+});
 
-// ── Session store ─────────────────────────────────────────────────────────────
+app.get('/api/signs/:language', (req, res) => {
+  const signs = getAvailableSigns(req.params.language);
+  res.json({ language: req.params.language, count: signs.length, signs });
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
 const sessions = new Map();
+const viewerSockets = new Set();
 
 function getSession(socketId) {
   if (!sessions.has(socketId)) {
@@ -76,6 +90,7 @@ function getSession(socketId) {
       language: 'asl',
       captionLog: [],
       signLog: [],
+      signOutputLog: [],   // ← deaf person's sentences
       topic: '',
     });
   }
@@ -83,13 +98,13 @@ function getSession(socketId) {
 }
 
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
+
 io.on('connection', (socket) => {
   console.log(`[WS] Client connected: ${socket.id}`);
 
   const session = getSession(socket.id);
-  let geminiDebounceTimer = null;
 
-  // Viewer join (audience phone — read only)
+  // ── Viewer join ─────────────────────────────────────────────────────────
   socket.on('viewer-join', () => {
     socket.join('viewers');
     viewerSockets.add(socket.id);
@@ -100,7 +115,7 @@ io.on('connection', (socket) => {
     session.language = lang || 'asl';
   });
 
-  // ── Transcript received from frontend (after Groq Whisper) ───────────────
+  // ── Hearing person: speech transcript → captions + signs ────────────────
   socket.on('transcript', (data) => {
     const { text, language } = data;
     if (!text?.trim()) return;
@@ -110,51 +125,61 @@ io.on('connection', (socket) => {
 
     console.log(`[${session.language.toUpperCase()}] "${text}"`);
 
-    // STEP 1: Instant raw caption
+    // Instant raw caption
     const captionEntry = { text, timestamp, type: 'raw' };
     socket.emit('caption', captionEntry);
     io.to('viewers').emit('caption', captionEntry);
     session.captionLog.push(captionEntry);
 
-    // STEP 2: Rule-based sign grammar — instant, no API call
-    const result = processTranscriptLocally(text);
+    // Rule-based sign grammar
+    const { signTokens, cleanedCaption, topic, confidence } = convertToSignGrammar(
+      text, session.language
+    );
 
-    console.log(`[Grammar] Topic: ${result.topic} | Tokens: ${result.signTokens.length} | Q: ${result.isQuestion}`);
+    console.log(`[Grammar] Topic: ${topic} | Tokens: ${signTokens.length}`);
 
-    // Emit cleaned caption
-    const cleanedEntry = {
-      text: result.cleanedCaption,
-      timestamp,
-      type: 'cleaned',
-      topic: result.topic,
-      confidence: result.confidence,
-    };
+    const cleanedEntry = { text: cleanedCaption, timestamp, type: 'cleaned', topic, confidence };
     socket.emit('caption-update', cleanedEntry);
     io.to('viewers').emit('caption-update', cleanedEntry);
+    session.topic = topic;
 
-    session.topic = result.topic;
-
-    // Map tokens to signs
-    const signQueue = mapTokensToVideos(result.signTokens, session.language);
+    const signQueue = mapTokensToVideos(signTokens, session.language);
     const coverage = Math.round(
       (signQueue.filter(s => s.hasVideo).length / Math.max(signQueue.length, 1)) * 100
     );
 
-    session.signLog.push({
-      tokens: result.signTokens,
-      timestamp,
-      topic: result.topic,
-    });
+    session.signLog.push({ tokens: signTokens, timestamp, topic });
 
-    const signsPayload = {
-      signQueue,
-      topic: result.topic,
-      confidence: result.confidence,
-      coverage,
-      timestamp,
-    };
+    const signsPayload = { signQueue, topic, confidence, coverage, timestamp };
     socket.emit('signs', signsPayload);
     io.to('viewers').emit('signs', signsPayload);
+  });
+
+  // ── NEW: Deaf person: signed sentence → broadcast to viewers ────────────
+  socket.on('sign-output', (data) => {
+    const { text, timestamp } = data;
+    if (!text?.trim()) return;
+
+    console.log(`[Sign→Text] "${text}"`);
+
+    // Log it
+    session.signOutputLog.push({ text, timestamp: timestamp || Date.now() });
+
+    // Broadcast to all viewer screens
+    const payload = {
+      text,
+      timestamp: timestamp || Date.now(),
+      type: 'sign-output',
+      from: 'deaf-person',
+    };
+
+    // Send back to the presenter's own screen too
+    socket.emit('sign-output-echo', payload);
+
+    // Broadcast to all viewers
+    io.to('viewers').emit('sign-output', payload);
+
+    console.log(`[Sign→Text] Broadcast to ${viewerSockets.size} viewer(s)`);
   });
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -166,17 +191,15 @@ io.on('connection', (socket) => {
       topic: session.topic,
       captionLog: session.captionLog,
       signLog: session.signLog,
+      signOutputLog: session.signOutputLog,
     });
   });
 
-  // ── Session reset ─────────────────────────────────────────────────────────
   socket.on('session-reset', () => {
-    clearTimeout(geminiDebounceTimer);
     sessions.delete(socket.id);
     console.log(`[WS] Session reset: ${socket.id}`);
   });
 
-  // ── Disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     if (viewerSockets.has(socket.id)) {
       socket.leave('viewers');
@@ -184,14 +207,13 @@ io.on('connection', (socket) => {
       console.log(`[Viewer] Disconnected: ${socket.id} | Remaining: ${viewerSockets.size}`);
       return;
     }
-
-    clearTimeout(geminiDebounceTimer);
     console.log(`[WS] Disconnected: ${socket.id}`);
     setTimeout(() => sessions.delete(socket.id), 60000);
   });
 });
 
-// ── REST: Groq Whisper transcription ──────────────────────────────────────────
+// ── REST: Groq Whisper ────────────────────────────────────────────────────────
+
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No audio file' });
 
@@ -206,36 +228,19 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
     });
     res.json({ transcript: transcription.text });
   } catch (err) {
-    console.error('[Groq] ❌', err.message);
+    console.error('[Groq]', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     try { unlinkSync(tmpPath); } catch (_) {}
   }
 });
 
-// ── REST: Available signs ─────────────────────────────────────────────────────
-app.get('/api/signs/:language', (req, res) => {
-  const signs = getAvailableSigns(req.params.language);
-  res.json({ language: req.params.language, count: signs.length, signs });
-});
-
-// ── REST: Health check ────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    mode: 'whisper-only',
-    groq: !!process.env.GROQ_API_KEY,
-    gemini: 'dormant',
-    activeSessions: sessions.size,
-    viewers: viewerSockets.size,
-    timestamp: new Date().toISOString(),
-  });
-});
-
 // ── Start ─────────────────────────────────────────────────────────────────────
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🤟 SignBridge Backend — http://localhost:${PORT}`);
-  console.log(`   Mode:   Whisper only (rule-based sign grammar)`);
-  console.log(`   Groq:   ${process.env.GROQ_API_KEY ? '✅' : '❌ Missing GROQ_API_KEY'}`);
-  console.log(`   Gemini: dormant (geminiProcessor.js kept for reference)\n`);
+  console.log(`   Groq Whisper: ${process.env.GROQ_API_KEY ? '✅' : '❌ Missing GROQ_API_KEY'}`);
+  console.log(`   Gemini:       disabled (geminiProcessor.js kept as backup)`);
+  console.log(`   Grammar:      rule-based — instant, zero rate limits`);
+  console.log(`   Bidirectional: ✅ sign-output channel active\n`);
 });

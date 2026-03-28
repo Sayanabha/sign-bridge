@@ -256,13 +256,13 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
         <PersonLabel
           colors={colors}
           label="Hearing Person"
-          sub="Speaking — signs shown to deaf person"
+          sub="Speaking — signs shown to sign language user"
           accent={colors.accent}
           icon="🎙️"
         />
         <PersonLabel
           colors={colors}
-          label="Deaf Person"
+          label="Sign language user"
           sub="Signing — text shown to hearing person"
           accent={colors.live}
           icon="🤟"
@@ -335,6 +335,7 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
           <SignToText
             colors={{ ...colors, accent: colors.live, accentGlow: colors.live }}
             language={session.language}
+            socket={session.socket}
           />
         </div>
       </div>
