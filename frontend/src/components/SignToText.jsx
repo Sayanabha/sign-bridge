@@ -1,23 +1,35 @@
-// 📄 frontend/src/components/SignToText.jsx  — NEW FILE
+// 📄 frontend/src/components/SignToText.jsx  — DAY 2 REBUILD
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useHandRecognition } from '../hooks/useHandRecognition';
 
-const WORD_PAUSE_MS     = 1500;  // pause between letters = new word
-const SENTENCE_PAUSE_MS = 3500;  // pause after words = send sentence
+const WORD_PAUSE_MS     = 1500;
+const SENTENCE_PAUSE_MS = 3500;
+const MIN_CONFIDENCE    = 0.65;
+
+// Letters that are easily confused — show a warning hint
+const AMBIGUOUS_PAIRS = {
+  'U': 'close fingers more (vs V)',
+  'V': 'spread fingers more (vs U)',
+  'M': 'fold 3 fingers over thumb (vs N)',
+  'N': 'fold 2 fingers over thumb (vs M)',
+  'S': 'thumb over fingers (vs A/T)',
+  'T': 'thumb between index+middle (vs S)',
+  'A': 'thumb beside fist (vs S)',
+  'R': 'cross index over middle (vs U)',
+};
 
 export default function SignToText({ colors, language }) {
-  const [active, setActive]           = useState(false);
-  const [letterBuffer, setLetterBuffer] = useState([]);   // letters building current word
-  const [wordBuffer, setWordBuffer]   = useState([]);     // confirmed words
-  const [sentences, setSentences]     = useState([]);     // completed sentences
-  const [currentWord, setCurrentWord] = useState('');
+  const [active, setActive]               = useState(false);
+  const [letterBuffer, setLetterBuffer]   = useState([]);
+  const [wordBuffer, setWordBuffer]       = useState([]);
+  const [sentences, setSentences]         = useState([]);
+  const [currentWord, setCurrentWord]     = useState('');
   const [lastConfirmed, setLastConfirmed] = useState(null);
 
   const wordTimerRef     = useRef(null);
   const sentenceTimerRef = useRef(null);
   const bottomRef        = useRef(null);
 
-  // ── Seal current letters into a word ─────────────────────────────────────
   const sealWord = useCallback(() => {
     setLetterBuffer(prev => {
       if (prev.length === 0) return prev;
@@ -25,7 +37,6 @@ export default function SignToText({ colors, language }) {
       setCurrentWord('');
       setWordBuffer(wb => {
         const next = [...wb, word];
-        // Start sentence timer
         clearTimeout(sentenceTimerRef.current);
         sentenceTimerRef.current = setTimeout(() => {
           setWordBuffer(wb2 => {
@@ -41,47 +52,42 @@ export default function SignToText({ colors, language }) {
     });
   }, []);
 
-  // ── Handle a confirmed sign from the buffer ───────────────────────────────
   const handleConfirmed = useCallback((sign, isWordSign) => {
     setLastConfirmed(sign);
 
     if (isWordSign) {
-      // Whole word sign — seal any pending letters first, then add the word
       sealWord();
-      clearTimeout(sentenceTimerRef.current);
       const word = sign.toLowerCase();
       setWordBuffer(prev => {
         const next = [...prev, word];
+        clearTimeout(sentenceTimerRef.current);
         sentenceTimerRef.current = setTimeout(() => {
           setWordBuffer(wb => {
             if (wb.length === 0) return wb;
-            const sentence = wb.join(' ');
-            setSentences(s => [...s, { text: sentence, timestamp: Date.now() }]);
+            setSentences(s => [...s, { text: wb.join(' '), timestamp: Date.now() }]);
             return [];
           });
         }, SENTENCE_PAUSE_MS);
         return next;
       });
     } else {
-      // Single letter — accumulate into word buffer
       setLetterBuffer(prev => {
         const next = [...prev, sign];
         setCurrentWord(next.join(''));
         return next;
       });
-
-      // Reset word boundary timer
       clearTimeout(wordTimerRef.current);
       wordTimerRef.current = setTimeout(sealWord, WORD_PAUSE_MS);
     }
   }, [sealWord]);
 
-  const { videoRef, canvasRef, isLoading, isReady, error, currentSign, progress } =
-    useHandRecognition({ onConfirmed: handleConfirmed, enabled: active });
+  const {
+    videoRef, canvasRef, isLoading, isReady, error,
+    currentSign, currentConfidence, progress, framesRequired,
+  } = useHandRecognition({ onConfirmed: handleConfirmed, enabled: active });
 
   const handleToggle = () => {
     if (active) {
-      // Stop and clear
       setActive(false);
       clearTimeout(wordTimerRef.current);
       clearTimeout(sentenceTimerRef.current);
@@ -94,13 +100,6 @@ export default function SignToText({ colors, language }) {
     }
   };
 
-  const clearAll = () => {
-    setSentences([]);
-    setWordBuffer([]);
-    setLetterBuffer([]);
-    setCurrentWord('');
-  };
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [sentences]);
@@ -110,10 +109,18 @@ export default function SignToText({ colors, language }) {
     clearTimeout(sentenceTimerRef.current);
   }, []);
 
-  // Progress ring for stability buffer
-  const ringRadius = 18;
-  const ringCircumference = 2 * Math.PI * ringRadius;
-  const ringOffset = ringCircumference * (1 - progress);
+  // Confidence-based color for progress ring
+  const ringColor = !currentSign ? colors.border
+    : currentConfidence >= 0.85 ? colors.live
+    : currentConfidence >= 0.70 ? '#F59E0B'
+    : colors.danger;
+
+  // Progress ring geometry
+  const R   = 22;
+  const C   = 2 * Math.PI * R;
+  const offset = C * (1 - progress);
+
+  const ambiguityHint = AMBIGUOUS_PAIRS[currentSign];
 
   return (
     <div style={{
@@ -147,7 +154,7 @@ export default function SignToText({ colors, language }) {
 
         <div style={{ display: 'flex', gap: '6px' }}>
           {sentences.length > 0 && (
-            <button onClick={clearAll} style={{
+            <button onClick={() => setSentences([])} style={{
               padding: '4px 10px', borderRadius: '6px', cursor: 'pointer',
               fontSize: '10px', fontWeight: 700, border: `1px solid ${colors.border}`,
               background: 'transparent', color: colors.muted, fontFamily: 'monospace',
@@ -157,7 +164,7 @@ export default function SignToText({ colors, language }) {
           )}
           <button onClick={handleToggle} style={{
             padding: '5px 14px', borderRadius: '8px', cursor: 'pointer',
-            fontSize: '11px', fontWeight: 700, border: 'none',
+            fontSize: '11px', fontWeight: 700,
             background: active ? colors.danger + '22' : colors.accent,
             color: active ? colors.danger : '#fff',
             border: active ? `1px solid ${colors.danger}44` : 'none',
@@ -168,19 +175,17 @@ export default function SignToText({ colors, language }) {
         </div>
       </div>
 
-      {/* ── Camera canvas ── */}
+      {/* ── Camera ── */}
       <div style={{
         position: 'relative', width: '100%', background: '#000',
         flexShrink: 0, maxHeight: '220px', overflow: 'hidden',
       }}>
         <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
         <canvas
-          ref={canvasRef}
-          width={640} height={480}
+          ref={canvasRef} width={640} height={480}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
 
-        {/* Not started */}
         {!active && !isLoading && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -188,11 +193,10 @@ export default function SignToText({ colors, language }) {
             background: 'rgba(0,0,0,0.8)',
           }}>
             <span style={{ fontSize: '36px' }}>👋</span>
-            <span style={{ fontSize: '12px', color: colors.muted }}>Press Start to begin hand tracking</span>
+            <span style={{ fontSize: '12px', color: colors.muted }}>Press Start to begin</span>
           </div>
         )}
 
-        {/* Loading */}
         {isLoading && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -208,7 +212,6 @@ export default function SignToText({ colors, language }) {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
@@ -218,45 +221,52 @@ export default function SignToText({ colors, language }) {
           </div>
         )}
 
-        {/* Live sign badge + progress ring */}
+        {/* Confidence ring + current sign */}
         {isReady && currentSign && (
           <div style={{
             position: 'absolute', top: '10px', right: '10px',
-            display: 'flex', alignItems: 'center', gap: '8px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
           }}>
-            {/* Progress ring */}
-            <svg width={44} height={44} style={{ transform: 'rotate(-90deg)' }}>
-              <circle cx={22} cy={22} r={ringRadius} fill="none" stroke={colors.border} strokeWidth={3} />
+            <svg width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx={26} cy={26} r={R} fill="rgba(0,0,0,0.6)" stroke={colors.border} strokeWidth={3} />
               <circle
-                cx={22} cy={22} r={ringRadius}
-                fill="none" stroke={colors.accent} strokeWidth={3}
-                strokeDasharray={ringCircumference}
-                strokeDashoffset={ringOffset}
+                cx={26} cy={26} r={R}
+                fill="none" stroke={ringColor} strokeWidth={3}
+                strokeDasharray={C} strokeDashoffset={offset}
                 strokeLinecap="round"
-                style={{ transition: 'stroke-dashoffset 0.1s linear' }}
+                style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.2s' }}
               />
               <text
-                x={22} y={22}
+                x={26} y={26}
                 textAnchor="middle" dominantBaseline="central"
-                fill={colors.text} fontSize={14} fontWeight={800}
-                fontFamily="monospace"
-                style={{ transform: 'rotate(90deg)', transformOrigin: '22px 22px' }}
+                fill="#fff" fontSize={16} fontWeight={800} fontFamily="monospace"
+                style={{ transform: 'rotate(90deg)', transformOrigin: '26px 26px' }}
               >
                 {currentSign}
               </text>
             </svg>
+            {/* Confidence % */}
+            <div style={{
+              background: 'rgba(0,0,0,0.65)', borderRadius: '4px',
+              padding: '2px 6px',
+            }}>
+              <span style={{ fontSize: '9px', color: ringColor, fontFamily: 'monospace' }}>
+                {Math.round(currentConfidence * 100)}%
+              </span>
+            </div>
           </div>
         )}
 
-        {/* Mode label */}
-        {isReady && (
+        {/* Ambiguity hint */}
+        {isReady && ambiguityHint && currentConfidence < 0.82 && (
           <div style={{
-            position: 'absolute', bottom: '8px', left: '10px',
-            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-            borderRadius: '6px', padding: '3px 10px',
+            position: 'absolute', bottom: '8px', left: '10px', right: '60px',
+            background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+            borderRadius: '6px', padding: '4px 10px',
+            border: `1px solid #F59E0B44`,
           }}>
-            <span style={{ fontSize: '9px', color: colors.accentGlow, fontFamily: 'monospace' }}>
-              FINGERSPELLING + WORD SIGNS
+            <span style={{ fontSize: '9px', color: '#F59E0B', fontFamily: 'monospace' }}>
+              Tip: {ambiguityHint}
             </span>
           </div>
         )}
@@ -264,11 +274,12 @@ export default function SignToText({ colors, language }) {
 
       {/* ── Live buffer ── */}
       <div style={{
-        padding: '10px 14px', borderTop: `1px solid ${colors.border}`,
-        borderBottom: `1px solid ${colors.border}`, flexShrink: 0, minHeight: '50px',
+        padding: '10px 14px',
+        borderTop: `1px solid ${colors.border}`,
+        borderBottom: `1px solid ${colors.border}`,
+        flexShrink: 0, minHeight: '50px',
         display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
       }}>
-        {/* Current word being spelled */}
         {currentWord && (
           <span style={{
             fontSize: '22px', fontWeight: 800, color: colors.accent,
@@ -281,8 +292,6 @@ export default function SignToText({ colors, language }) {
             }} />
           </span>
         )}
-
-        {/* Confirmed words */}
         {wordBuffer.map((w, i) => (
           <span key={i} style={{
             padding: '3px 10px', borderRadius: '20px', fontSize: '12px',
@@ -292,30 +301,30 @@ export default function SignToText({ colors, language }) {
             {w}
           </span>
         ))}
-
-        {/* Empty */}
         {!currentWord && wordBuffer.length === 0 && (
           <span style={{ fontSize: '12px', color: colors.muted }}>
-            {isReady ? 'Hold each letter steady for ~0.5s' : 'Press Start to begin'}
+            {isReady ? 'Hold each letter ~0.5s · pause 1.5s for new word' : 'Press Start to begin'}
           </span>
         )}
       </div>
 
-      {/* ── Completed sentences ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* ── Sentences ── */}
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '14px',
+        display: 'flex', flexDirection: 'column', gap: '8px',
+      }}>
         {sentences.length === 0 && (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', height: '100%', gap: '10px', color: colors.muted,
           }}>
             <span style={{ fontSize: '28px' }}>🤟</span>
-            <p style={{ margin: 0, fontSize: '12px', textAlign: 'center', lineHeight: 1.6 }}>
-              Sentences appear here after a pause.<br />
-              Pause 1.5s between words, 3.5s to send.
+            <p style={{ margin: 0, fontSize: '12px', textAlign: 'center', lineHeight: 1.7 }}>
+              Sentences appear here after a 3.5s pause.<br />
+              Ring turns green when a sign is confirmed.
             </p>
           </div>
         )}
-
         {sentences.map((s, i) => (
           <div key={i} style={{
             background: colors.bg, border: `1px solid ${colors.border}`,

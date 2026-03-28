@@ -1,20 +1,32 @@
-// 📄 frontend/src/hooks/useHandRecognition.js  — NEW FILE
+// 📄 frontend/src/hooks/useHandRecognition.js  — DAY 2 REBUILD
+// Changes from Day 1:
+//   - Uses classifyLetterWithConfidence instead of classifyLetter
+//   - Passes confidence score to StabilityBuffer (low confidence = rejected)
+//   - Exposes currentConfidence for UI display
+//   - Exposes requiredFrames so progress ring scales per letter
+
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { classifyLetter, classifyWordSign, StabilityBuffer } from '../utils/handClassifier';
+import {
+  classifyLetterWithConfidence,
+  classifyWordSign,
+  StabilityBuffer,
+} from '../utils/handClassifier';
 
 export function useHandRecognition({ onConfirmed, enabled }) {
-  const [isLoading, setIsLoading]     = useState(false);
-  const [isReady, setIsReady]         = useState(false);
-  const [error, setError]             = useState(null);
-  const [currentSign, setCurrentSign] = useState(null);  // live (unconfirmed)
-  const [progress, setProgress]       = useState(0);     // 0-1 fill toward confirm
+  const [isLoading, setIsLoading]           = useState(false);
+  const [isReady, setIsReady]               = useState(false);
+  const [error, setError]                   = useState(null);
+  const [currentSign, setCurrentSign]       = useState(null);
+  const [currentConfidence, setCurrentConfidence] = useState(0);
+  const [progress, setProgress]             = useState(0);
+  const [framesRequired, setFramesRequired] = useState(10);
 
-  const videoRef    = useRef(null);
-  const canvasRef   = useRef(null);
-  const handsRef    = useRef(null);
-  const cameraRef   = useRef(null);
-  const bufferRef   = useRef(new StabilityBuffer({ requiredFrames: 10, cooldownFrames: 18 }));
-  const enabledRef  = useRef(enabled);
+  const videoRef   = useRef(null);
+  const canvasRef  = useRef(null);
+  const handsRef   = useRef(null);
+  const cameraRef  = useRef(null);
+  const bufferRef  = useRef(new StabilityBuffer({ requiredFrames: 10, cooldownFrames: 18 }));
+  const enabledRef = useRef(enabled);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
@@ -26,6 +38,7 @@ export function useHandRecognition({ onConfirmed, enabled }) {
     bufferRef.current.reset();
     setIsReady(false);
     setCurrentSign(null);
+    setCurrentConfidence(0);
     setProgress(0);
   }, []);
 
@@ -35,8 +48,8 @@ export function useHandRecognition({ onConfirmed, enabled }) {
     setError(null);
 
     try {
-      const { Hands, HAND_CONNECTIONS }   = await import('@mediapipe/hands');
-      const { Camera }                    = await import('@mediapipe/camera_utils');
+      const { Hands, HAND_CONNECTIONS }      = await import('@mediapipe/hands');
+      const { Camera }                       = await import('@mediapipe/camera_utils');
       const { drawConnectors, drawLandmarks } = await import('@mediapipe/drawing_utils');
 
       const hands = new Hands({
@@ -68,32 +81,47 @@ export function useHandRecognition({ onConfirmed, enabled }) {
         if (results.multiHandLandmarks?.length > 0) {
           const lm = results.multiHandLandmarks[0];
 
-          // Draw landmarks (also mirrored)
+          // Draw landmarks
           ctx.save();
           ctx.scale(-1, 1);
           ctx.translate(-canvas.width, 0);
+
+          // Color landmarks based on confidence
           drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#7C6AF7', lineWidth: 2 });
           drawLandmarks(ctx, lm, { color: '#A89BFA', lineWidth: 1, radius: 3 });
+
           ctx.restore();
 
-          // Classify — word signs take priority over letters
+          // Word signs take priority
           const wordSign = classifyWordSign(lm);
-          const letter   = classifyLetter(lm);
-          const detected = wordSign || letter;
+          let letter = null;
+          let confidence = 0;
 
-          setCurrentSign(detected);
+          if (wordSign) {
+            letter     = wordSign;
+            confidence = 0.92; // word signs are high confidence by design
+          } else {
+            const result = classifyLetterWithConfidence(lm);
+            letter       = result.letter;
+            confidence   = result.confidence;
+          }
 
-          // Run through stability buffer
-          const confirmed = bufferRef.current.update(detected);
+          setCurrentSign(letter);
+          setCurrentConfidence(confidence);
+          setFramesRequired(bufferRef.current.currentRequired || 10);
+
+          // Update buffer — passes confidence for filtering
+          const confirmed = bufferRef.current.update(letter, confidence);
           setProgress(bufferRef.current.progress);
 
           if (confirmed) {
             onConfirmed?.(confirmed, !!wordSign);
           }
         } else {
-          // No hand detected
+          // No hand in frame
           setCurrentSign(null);
-          bufferRef.current.update(null);
+          setCurrentConfidence(0);
+          bufferRef.current.update(null, 0);
           setProgress(0);
         }
       });
@@ -115,21 +143,29 @@ export function useHandRecognition({ onConfirmed, enabled }) {
       setIsReady(true);
 
     } catch (err) {
-      console.error('[MediaPipe]', err);
+      console.error('[MediaPipe]', err.message);
       setError('Could not load hand tracking. Check your internet connection.');
     } finally {
       setIsLoading(false);
     }
   }, [onConfirmed]);
 
-  // Start/stop based on enabled prop
   useEffect(() => {
     if (enabled && !isReady && !isLoading) start();
     else if (!enabled && isReady) stop();
   }, [enabled]);
 
-  // Cleanup on unmount
   useEffect(() => () => stop(), []);
 
-  return { videoRef, canvasRef, isLoading, isReady, error, currentSign, progress };
+  return {
+    videoRef,
+    canvasRef,
+    isLoading,
+    isReady,
+    error,
+    currentSign,
+    currentConfidence,
+    progress,
+    framesRequired,
+  };
 }
