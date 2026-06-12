@@ -1,9 +1,10 @@
-// 📄 frontend/src/App.jsx  — DAY 3 REBUILD
+// 📄 frontend/src/App.jsx
 import { useState } from 'react';
 import { useSession } from './hooks/useSession';
 import LanguageSelector from './components/LanguageSelector';
 import CaptionDisplay from './components/CaptionDisplay';
 import SignPlayer from './components/SignPlayer';
+import AvatarSignPlayer from './components/AvatarSignPlayer';
 import WebcamPanel from './components/WebcamPanel';
 import Toolbar from './components/Toolbar';
 import OnboardingModal from './components/OnboardingModal';
@@ -11,6 +12,7 @@ import DictionaryBrowser from './components/DictionaryBrowser';
 import SessionExport from './components/SessionExport';
 import QRShare from './components/QRShare';
 import SignToText from './components/SignToText';
+import FingerDrawPanel from './components/FingerDrawPanel';
 
 export default function App() {
   const session = useSession();
@@ -21,24 +23,27 @@ export default function App() {
   const [showExport, setShowExport]         = useState(false);
   const [showQR, setShowQR]                 = useState(false);
 
-  // Mode: 'interpret' = speech→sign only, 'dual' = both streams simultaneously
+  // App mode
   const [appMode, setAppMode] = useState('interpret');
 
-  // Panel toggles (interpret mode only)
+  // Panel toggles (interpret mode)
   const [showWebcam, setShowWebcam]     = useState(true);
   const [showCaptions, setShowCaptions] = useState(true);
 
   // Sign player settings
-  const [signSpeed, setSignSpeed] = useState(1);
-  const [signSize, setSignSize]   = useState(1);
-  const [theme, setTheme]         = useState('dark');
+  const [signSpeed, setSignSpeed]   = useState(1);
+  const [signSize, setSignSize]     = useState(1);
+  const [theme, setTheme]           = useState('dark');
+  const [use3D, setUse3D]           = useState(false); // ← default SVG, toggle to 3D
 
   const colors = getThemeColors(theme);
 
-  // Grid columns for interpret mode
-  const visibleCount = [showWebcam, showCaptions, true].filter(Boolean).length;
+  const visibleCount  = [showWebcam, showCaptions, true].filter(Boolean).length;
   const interpretCols = visibleCount === 3 ? '1fr 1fr 1fr'
     : visibleCount === 2 ? '1fr 1fr' : '1fr';
+
+  // ── Sign player — SVG by default, 3D if toggled ───────────────────────────
+  const SignPlayerComponent = use3D ? AvatarSignPlayer : SignPlayer;
 
   return (
     <div style={{ minHeight: '100vh', background: colors.bg, color: colors.text, fontFamily: 'sans-serif' }}>
@@ -90,10 +95,11 @@ export default function App() {
           }}>
             {[
               { id: 'interpret', label: 'Speech → Sign' },
-              { id: 'dual',      label: 'Dual — Both' },
+              { id: 'dual',      label: 'Dual — Both'   },
+              { id: 'draw',      label: '✍ Draw'        },
             ].map(m => (
               <button key={m.id} onClick={() => setAppMode(m.id)} style={{
-                padding: '6px 16px', borderRadius: '8px', cursor: 'pointer',
+                padding: '6px 14px', borderRadius: '8px', cursor: 'pointer',
                 fontSize: '12px', fontWeight: 700, border: 'none',
                 background: appMode === m.id ? colors.accent : 'transparent',
                 color: appMode === m.id ? '#fff' : colors.muted,
@@ -113,6 +119,24 @@ export default function App() {
               colors={colors}
             />
 
+            {/* 3D toggle — only shown in interpret/dual mode */}
+            {appMode !== 'draw' && (
+              <button
+                onClick={() => setUse3D(!use3D)}
+                title={use3D ? 'Switch to SVG signs' : 'Switch to 3D hand'}
+                style={{
+                  padding: '7px 14px', borderRadius: '10px', cursor: 'pointer',
+                  fontWeight: 700, fontSize: '11px', fontFamily: 'monospace',
+                  border: `1px solid ${use3D ? colors.accent + '66' : colors.border}`,
+                  background: use3D ? colors.accent + '22' : colors.panel,
+                  color: use3D ? colors.accent : colors.muted,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {use3D ? '3D ✦' : 'SVG'}
+              </button>
+            )}
+
             <button onClick={() => setShowQR(true)} style={{
               padding: '9px 16px', borderRadius: '12px', cursor: 'pointer',
               fontWeight: 700, fontSize: '12px',
@@ -123,7 +147,6 @@ export default function App() {
               Share
             </button>
 
-            {/* Start/Stop only relevant in interpret mode */}
             {appMode === 'interpret' && (
               <button
                 onClick={session.isListening ? session.stopSession : session.startSession}
@@ -168,10 +191,7 @@ export default function App() {
       )}
 
       {/* ── Main content ── */}
-      <div style={{
-        maxWidth: '1600px', margin: '0 auto',
-        padding: '20px 24px',
-      }}>
+      <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '20px 24px' }}>
 
         {/* ── INTERPRET MODE ── */}
         {appMode === 'interpret' && (
@@ -197,7 +217,7 @@ export default function App() {
                   presentationMode={false} onToggleOff={() => setShowCaptions(false)}
                 />
               )}
-              <SignPlayer
+              <SignPlayerComponent
                 signQueue={session.signQueue} language={session.language}
                 isProcessing={session.isProcessing} speed={signSpeed}
                 size={signSize} colors={colors}
@@ -205,7 +225,6 @@ export default function App() {
               />
             </div>
 
-            {/* Restore buttons */}
             {(!showWebcam || !showCaptions) && (
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
                 {!showWebcam && (
@@ -230,8 +249,19 @@ export default function App() {
             session={session}
             signSpeed={signSpeed}
             signSize={signSize}
-            theme={theme} setTheme={setTheme}
+            SignPlayerComponent={SignPlayerComponent}
           />
+        )}
+
+        {/* ── DRAW MODE ── */}
+        {appMode === 'draw' && (
+          <div style={{ height: '580px' }}>
+            <FingerDrawPanel
+              colors={colors}
+              language={session.language}
+              socket={session.socket}
+            />
+          </div>
         )}
       </div>
 
@@ -245,40 +275,23 @@ export default function App() {
 
 // ── Dual Layout ───────────────────────────────────────────────────────────────
 
-function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
+function DualLayout({ colors, session, signSpeed, signSize, SignPlayerComponent }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* Person labels */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px',
-      }}>
-        <PersonLabel
-          colors={colors}
-          label="Hearing Person"
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <PersonLabel colors={colors} label="Hearing Person"
           sub="Speaking — signs shown to sign language user"
-          accent={colors.accent}
-          icon="🎙️"
-        />
-        <PersonLabel
-          colors={colors}
-          label="Sign language user"
-          sub="Signing — text shown to hearing person"
-          accent={colors.live}
-          icon="🤟"
-        />
+          accent={colors.accent} icon="🎙️" />
+        <PersonLabel colors={colors} label="Sign Language User"
+          sub="Signing or drawing — text shown to hearing person"
+          accent={colors.live} icon="🤟" />
       </div>
 
-      {/* Main panels — side by side */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr',
-        gap: '20px', alignItems: 'start',
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'start' }}>
 
-        {/* ── LEFT: Hearing person's stream ── */}
+        {/* LEFT: Hearing person */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* Speech controls */}
           <div style={{
             background: colors.panel, border: `1px solid ${colors.border}`,
             borderRadius: '14px', padding: '12px 16px',
@@ -308,7 +321,6 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
             </button>
           </div>
 
-          {/* Captions — compact */}
           <CompactCaptions
             captions={session.captions}
             interimText={session.interimText}
@@ -317,9 +329,8 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
             accentColor={colors.accent}
           />
 
-          {/* Sign player */}
           <div style={{ height: '280px' }}>
-            <SignPlayer
+            <SignPlayerComponent
               signQueue={session.signQueue}
               language={session.language}
               isProcessing={session.isProcessing}
@@ -330,7 +341,7 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
           </div>
         </div>
 
-        {/* ── RIGHT: Deaf person's stream ── */}
+        {/* RIGHT: Sign language user — Sign to Text + Draw */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <SignToText
             colors={{ ...colors, accent: colors.live, accentGlow: colors.live }}
@@ -340,16 +351,13 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
         </div>
       </div>
 
-      {/* Divider with session stats */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '16px',
         padding: '10px 16px',
         background: colors.panel, borderRadius: '12px',
         border: `1px solid ${colors.border}`,
       }}>
-        <span style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace' }}>
-          SESSION
-        </span>
+        <span style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace' }}>SESSION</span>
         {session.topic && (
           <span style={{
             fontSize: '10px', padding: '2px 8px', borderRadius: '20px',
@@ -373,16 +381,14 @@ function DualLayout({ colors, session, signSpeed, signSize, theme, setTheme }) {
   );
 }
 
-// ── Person label component ────────────────────────────────────────────────────
+// ── Person label ──────────────────────────────────────────────────────────────
 
 function PersonLabel({ colors, label, sub, accent, icon }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '10px',
-      padding: '10px 16px',
-      background: colors.panel,
-      border: `1px solid ${accent}33`,
-      borderRadius: '12px',
+      padding: '10px 16px', background: colors.panel,
+      border: `1px solid ${accent}33`, borderRadius: '12px',
       borderLeft: `3px solid ${accent}`,
     }}>
       <span style={{ fontSize: '18px' }}>{icon}</span>
@@ -394,20 +400,13 @@ function PersonLabel({ colors, label, sub, accent, icon }) {
   );
 }
 
-// ── Compact captions for dual layout ─────────────────────────────────────────
+// ── Compact captions ──────────────────────────────────────────────────────────
 
 function CompactCaptions({ captions, interimText, isListening, colors, accentColor }) {
   const rawCaptions = captions.filter(c => c.type === 'raw' || !c.type).slice(-4);
-
   return (
-    <div style={{
-      background: colors.panel, border: `1px solid ${colors.border}`,
-      borderRadius: '14px', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '8px 14px', borderBottom: `1px solid ${colors.border}`,
-        display: 'flex', alignItems: 'center', gap: '6px',
-      }}>
+    <div style={{ background: colors.panel, border: `1px solid ${colors.border}`, borderRadius: '14px', overflow: 'hidden' }}>
+      <div style={{ padding: '8px 14px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: colors.text }}>Live Captions</span>
         {isListening && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -423,24 +422,19 @@ function CompactCaptions({ captions, interimText, isListening, colors, accentCol
           </span>
         )}
         {rawCaptions.map((c, i) => (
-          <p key={i} style={{
-            margin: 0, fontSize: '13px', color: i === rawCaptions.length - 1 ? colors.text : colors.muted,
-            lineHeight: 1.5,
-          }}>
+          <p key={i} style={{ margin: 0, fontSize: '13px', lineHeight: 1.5, color: i === rawCaptions.length - 1 ? colors.text : colors.muted }}>
             {c.text}
           </p>
         ))}
         {interimText && (
-          <p style={{ margin: 0, fontSize: '13px', color: accentColor, fontStyle: 'italic', lineHeight: 1.5 }}>
-            {interimText}
-          </p>
+          <p style={{ margin: 0, fontSize: '13px', color: accentColor, fontStyle: 'italic', lineHeight: 1.5 }}>{interimText}</p>
         )}
       </div>
     </div>
   );
 }
 
-// ── Restore button style ──────────────────────────────────────────────────────
+// ── Restore button ────────────────────────────────────────────────────────────
 
 function restoreStyle(colors) {
   return {
